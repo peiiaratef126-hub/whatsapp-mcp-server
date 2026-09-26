@@ -1,0 +1,65 @@
+# Binaries and build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+build/
+
+# Go
+*.test
+*.out
+whatsapp-bridge/whatsapp-bridge
+whatsapp-bridge/whatsapp-bridge.exe
+whatsapp-bridge/bridge.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# SQLite databases & WhatsApp session files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+session.db*
+whatsapp_bridge.db*
+whatsapp_data.db*
+
+# Temporary files & media downloads
+downloads/
+temp/
+tmp/
+media_cache/
+*.tmp
+
+# IDE / Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
