@@ -167,7 +167,7 @@ func (s *HTTPServer) verifyAdmin(ctx context.Context, groupJID string) error {
 	}
 
 	if !isAdmin {
-		return fmt.Errorf("Permission denied: the connected account (%s) is not an admin of group %s", status.JID, groupJID)
+		return fmt.Errorf("permission denied: the connected account (%s) is not an admin of group %s", status.JID, groupJID)
 	}
 
 	return nil
@@ -678,7 +678,21 @@ func (s *HTTPServer) handleDownloadMedia(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	mediaData, err := s.bridge.client.DownloadAny(r.Context(), &msgProto)
+	var mediaData []byte
+	if msgProto.DocumentMessage != nil {
+		mediaData, err = s.bridge.client.Download(r.Context(), msgProto.DocumentMessage)
+	} else if msgProto.ImageMessage != nil {
+		mediaData, err = s.bridge.client.Download(r.Context(), msgProto.ImageMessage)
+	} else if msgProto.AudioMessage != nil {
+		mediaData, err = s.bridge.client.Download(r.Context(), msgProto.AudioMessage)
+	} else if msgProto.VideoMessage != nil {
+		mediaData, err = s.bridge.client.Download(r.Context(), msgProto.VideoMessage)
+	} else if msgProto.StickerMessage != nil {
+		mediaData, err = s.bridge.client.Download(r.Context(), msgProto.StickerMessage)
+	} else {
+		writeError(w, http.StatusBadRequest, "message does not contain downloadable media")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to download media from WhatsApp: "+err.Error())
 		return
@@ -1043,7 +1057,12 @@ func (s *HTTPServer) handleDeleteMessage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	_, err = s.bridge.client.RevokeMessage(r.Context(), chatJID, types.MessageID(req.MessageID))
+	senderJID := chatJID
+	if s.bridge.client.Store != nil && s.bridge.client.Store.ID != nil {
+		senderJID = *s.bridge.client.Store.ID
+	}
+	revokeMsg := s.bridge.client.BuildRevoke(chatJID, senderJID, types.MessageID(req.MessageID))
+	_, err = s.bridge.client.SendMessage(r.Context(), chatJID, revokeMsg)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to revoke message: "+err.Error())
 		return

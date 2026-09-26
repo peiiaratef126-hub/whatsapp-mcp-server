@@ -1,7 +1,9 @@
 """Group moderation and admin MCP tools."""
 
 from typing import Any
+
 from mcp.server.fastmcp import FastMCP
+
 from client import BridgeClient, BridgeError
 from confirmation import format_pending_confirmation
 
@@ -53,7 +55,11 @@ def register_admin_tools(mcp: FastMCP, client: BridgeClient) -> None:
         try:
             return client.set_group_announce_only(clean_group, enabled)
         except BridgeError as e:
-            if e.status_code == 403 or "permission" in str(e).lower() or "not an admin" in str(e).lower():
+            if (
+                e.status_code == 403
+                or "permission" in str(e).lower()
+                or "not an admin" in str(e).lower()
+            ):
                 return {
                     "error": f"Permission denied: the connected WhatsApp account is not an admin of group {clean_group}",
                     "details": e.message,

@@ -4,12 +4,14 @@ import os
 import shutil
 import subprocess
 import tempfile
-from typing import Any, Optional
+from typing import Any
+
 import pypdf
-from pypdf.errors import PdfReadError
 from mcp.server.fastmcp import FastMCP
+from pypdf.errors import PdfReadError
+
 from client import BridgeClient, BridgeError
-from config import DEFAULT_MAX_PAGES_PER_PDF, DEFAULT_MAX_CHARS_TOTAL
+from config import DEFAULT_MAX_CHARS_TOTAL, DEFAULT_MAX_PAGES_PER_PDF
 
 
 # Pure logic helpers for unit testing & extraction
@@ -157,7 +159,7 @@ def cap_pdf_collection(
     }
 
 
-def convert_audio_to_ogg_opus(input_path: str) -> tuple[str, bool, Optional[str]]:
+def convert_audio_to_ogg_opus(input_path: str) -> tuple[str, bool, str | None]:
     """Convert audio file to .ogg Opus format using ffmpeg if installed.
 
     Returns:
@@ -176,7 +178,9 @@ def convert_audio_to_ogg_opus(input_path: str) -> tuple[str, bool, Optional[str]
     if ext == ".ogg" or ext == ".opus":
         return input_path, True, None
 
-    temp_out = os.path.join(tempfile.gettempdir(), f"voice_note_{os.getpid()}_{os.path.basename(input_path)}.ogg")
+    temp_out = os.path.join(
+        tempfile.gettempdir(), f"voice_note_{os.getpid()}_{os.path.basename(input_path)}.ogg"
+    )
     cmd = [
         ffmpeg_bin,
         "-y",
@@ -192,7 +196,7 @@ def convert_audio_to_ogg_opus(input_path: str) -> tuple[str, bool, Optional[str]
     ]
 
     try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        res = subprocess.run(cmd, capture_output=True, check=False)
         if res.returncode == 0 and os.path.exists(temp_out) and os.path.getsize(temp_out) > 0:
             return temp_out, True, None
         return (
@@ -212,9 +216,7 @@ def register_media_tools(mcp: FastMCP, client: BridgeClient) -> None:
     """Register media and document tools with FastMCP server."""
 
     @mcp.tool()
-    def send_file(
-        recipient_jid: str, file_path: str, caption: str = ""
-    ) -> dict[str, Any]:
+    def send_file(recipient_jid: str, file_path: str, caption: str = "") -> dict[str, Any]:
         """Send a document, image, or media file to a WhatsApp chat.
 
         Args:
@@ -240,9 +242,7 @@ def register_media_tools(mcp: FastMCP, client: BridgeClient) -> None:
             return {"error": str(e), "file_path": abs_path}
 
     @mcp.tool()
-    def send_audio_message(
-        recipient_jid: str, file_path: str
-    ) -> dict[str, Any]:
+    def send_audio_message(recipient_jid: str, file_path: str) -> dict[str, Any]:
         """Send an audio message / voice note to a WhatsApp chat.
 
         Automatically converts audio to .ogg Opus format via ffmpeg if installed.
@@ -278,9 +278,7 @@ def register_media_tools(mcp: FastMCP, client: BridgeClient) -> None:
             return {"error": str(e), "file_path": abs_path}
 
     @mcp.tool()
-    def download_media(
-        message_id: str, chat_jid: str = ""
-    ) -> dict[str, Any]:
+    def download_media(message_id: str, chat_jid: str = "") -> dict[str, Any]:
         """Download media attachment from a WhatsApp message and return its local file path.
 
         Args:
@@ -300,8 +298,8 @@ def register_media_tools(mcp: FastMCP, client: BridgeClient) -> None:
     @mcp.tool()
     def get_group_pdfs(
         chat_jid: str,
-        since: Optional[int] = None,
-        until: Optional[int] = None,
+        since: int | None = None,
+        until: int | None = None,
         max_pages_per_pdf: int = DEFAULT_MAX_PAGES_PER_PDF,
         max_chars_total: int = DEFAULT_MAX_CHARS_TOTAL,
     ) -> dict[str, Any]:
@@ -347,11 +345,13 @@ def register_media_tools(mcp: FastMCP, client: BridgeClient) -> None:
                     dl_res = client.download_media(msg_id, chat_jid=chat_jid)
                     local_path = dl_res.get("file_path")
                 except BridgeError as e:
-                    extracted_docs.append({
-                        "message_id": msg_id,
-                        "filename": msg.get("media_filename", f"{msg_id}.pdf"),
-                        "error": f"Failed to download attachment: {e}",
-                    })
+                    extracted_docs.append(
+                        {
+                            "message_id": msg_id,
+                            "filename": msg.get("media_filename", f"{msg_id}.pdf"),
+                            "error": f"Failed to download attachment: {e}",
+                        }
+                    )
                     continue
 
             if local_path and os.path.exists(local_path):

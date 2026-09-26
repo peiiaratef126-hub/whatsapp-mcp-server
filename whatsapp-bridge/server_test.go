@@ -141,7 +141,7 @@ func TestHTTPServerAdminGating(t *testing.T) {
 		t.Fatalf("Expected 403 Forbidden when not admin, got %d (body: %s)", w.Code, w.Body.String())
 	}
 
-	if !strings.Contains(w.Body.String(), "Permission") && !strings.Contains(w.Body.String(), "failed") {
+	if !strings.Contains(strings.ToLower(w.Body.String()), "permission") && !strings.Contains(w.Body.String(), "failed") {
 		t.Fatalf("Expected clear permission error message, got: %s", w.Body.String())
 	}
 

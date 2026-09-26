@@ -1,7 +1,9 @@
 """Contact-related MCP tools."""
 
 from typing import Any
+
 from mcp.server.fastmcp import FastMCP
+
 from client import BridgeClient, BridgeError
 
 

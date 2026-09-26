@@ -1,7 +1,9 @@
 """Group management MCP tools."""
 
 from typing import Any
+
 from mcp.server.fastmcp import FastMCP
+
 from client import BridgeClient, BridgeError
 
 
@@ -62,7 +64,11 @@ def register_groups_tools(mcp: FastMCP, client: BridgeClient) -> None:
         try:
             return client.add_participant(clean_group, clean_part)
         except BridgeError as e:
-            if e.status_code == 403 or "permission" in str(e).lower() or "not an admin" in str(e).lower():
+            if (
+                e.status_code == 403
+                or "permission" in str(e).lower()
+                or "not an admin" in str(e).lower()
+            ):
                 return {
                     "error": f"Permission denied: the connected WhatsApp account is not an admin of group {clean_group}",
                     "details": e.message,
@@ -94,7 +100,11 @@ def register_groups_tools(mcp: FastMCP, client: BridgeClient) -> None:
         try:
             return client.remove_participant(clean_group, clean_part)
         except BridgeError as e:
-            if e.status_code == 403 or "permission" in str(e).lower() or "not an admin" in str(e).lower():
+            if (
+                e.status_code == 403
+                or "permission" in str(e).lower()
+                or "not an admin" in str(e).lower()
+            ):
                 return {
                     "error": f"Permission denied: the connected WhatsApp account is not an admin of group {clean_group}",
                     "details": e.message,
@@ -121,7 +131,11 @@ def register_groups_tools(mcp: FastMCP, client: BridgeClient) -> None:
         try:
             return client.get_group_invite_link(clean_group)
         except BridgeError as e:
-            if e.status_code == 403 or "permission" in str(e).lower() or "not an admin" in str(e).lower():
+            if (
+                e.status_code == 403
+                or "permission" in str(e).lower()
+                or "not an admin" in str(e).lower()
+            ):
                 return {
                     "error": f"Permission denied: the connected WhatsApp account is not an admin of group {clean_group}",
                     "details": e.message,

@@ -1,6 +1,7 @@
 """Main entry point for running the WhatsApp MCP server."""
 
 import sys
+
 from server import create_mcp_server
 
 

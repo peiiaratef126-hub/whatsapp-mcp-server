@@ -1,14 +1,16 @@
 """HTTP client for communicating with the local Go WhatsApp bridge."""
 
-from typing import Any, Optional
+from typing import Any
+
 import httpx
-from config import BRIDGE_URL, REQUEST_TIMEOUT, MAX_RETRIES
+
+from config import BRIDGE_URL, MAX_RETRIES, REQUEST_TIMEOUT
 
 
 class BridgeError(Exception):
     """Exception raised when a bridge request fails."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None):
+    def __init__(self, message: str, status_code: int | None = None):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
@@ -41,8 +43,8 @@ class BridgeClient:
         self,
         method: str,
         endpoint: str,
-        params: Optional[dict[str, Any]] = None,
-        json_data: Optional[dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
+        json_data: dict[str, Any] | None = None,
     ) -> Any:
         """Execute HTTP request with retries and structured error extraction."""
         last_exception = None
@@ -112,10 +114,10 @@ class BridgeClient:
     # Messages
     def list_messages(
         self,
-        chat_jid: Optional[str] = None,
-        query: Optional[str] = None,
-        since: Optional[int] = None,
-        until: Optional[int] = None,
+        chat_jid: str | None = None,
+        query: str | None = None,
+        since: int | None = None,
+        until: int | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -149,9 +151,7 @@ class BridgeClient:
             json_data={"recipient_jid": recipient_jid, "text": text},
         )
 
-    def send_file(
-        self, recipient_jid: str, file_path: str, caption: str = ""
-    ) -> dict[str, Any]:
+    def send_file(self, recipient_jid: str, file_path: str, caption: str = "") -> dict[str, Any]:
         """Send a file/document/image message."""
         return self._request(
             "POST",
@@ -207,8 +207,8 @@ class BridgeClient:
     def get_group_pdfs(
         self,
         chat_jid: str,
-        since: Optional[int] = None,
-        until: Optional[int] = None,
+        since: int | None = None,
+        until: int | None = None,
     ) -> list[dict[str, Any]]:
         """Get list of PDF messages in a group."""
         params: dict[str, Any] = {"chat_jid": chat_jid}

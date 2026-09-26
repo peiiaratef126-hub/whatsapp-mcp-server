@@ -1,7 +1,9 @@
 """Message and chat management MCP tools."""
 
-from typing import Any, Optional
+from typing import Any
+
 from mcp.server.fastmcp import FastMCP
+
 from client import BridgeClient, BridgeError
 from confirmation import format_pending_confirmation
 
@@ -43,10 +45,10 @@ def register_messages_tools(mcp: FastMCP, client: BridgeClient) -> None:
 
     @mcp.tool()
     def list_messages(
-        chat_jid: Optional[str] = None,
-        query: Optional[str] = None,
-        since: Optional[int] = None,
-        until: Optional[int] = None,
+        chat_jid: str | None = None,
+        query: str | None = None,
+        since: int | None = None,
+        until: int | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:

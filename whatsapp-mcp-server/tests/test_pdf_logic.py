@@ -2,31 +2,28 @@
 
 import os
 import tempfile
-import pytest
+
 from pypdf import PdfWriter
-from media import extract_text_from_pdf, cap_pdf_collection
+
+from media import cap_pdf_collection, extract_text_from_pdf
 
 
-def create_sample_pdf(pages_text: list[str], password: str = None) -> str:
+def create_sample_pdf(pages_text: list[str], password: str | None = None) -> str:
     """Create a temporary PDF file with given text pages and optional encryption."""
     writer = PdfWriter()
-    for text in pages_text:
-        # Create a page with text
-        page = writer.add_blank_page(width=200, height=200)
-        # Note: In pypdf, add_blank_page creates an empty page.
-        # To add real extractable text in tests, we can annotate or write text stream.
+    for _ in pages_text:
+        _ = writer.add_blank_page(width=200, height=200)
     if password:
         writer.encrypt(password)
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-    writer.write(tmp)
-    tmp.close()
-    return tmp.name
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        writer.write(tmp)
+        tmp_name = tmp.name
+    return tmp_name
 
 
 def create_text_pdf(text: str) -> str:
     """Create a valid PDF containing extractable text."""
-    # Write a minimal valid PDF with a content stream containing text
     pdf_content = (
         b"%PDF-1.4\n"
         b"1 0 obj <</Type /Catalog /Pages 2 0 R>> endobj\n"
@@ -39,10 +36,10 @@ def create_text_pdf(text: str) -> str:
         b"xref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000244 00000 n \n0000000338 00000 n \n"
         b"trailer <</Size 6 /Root 1 0 R>>\nstartxref\n417\n%%EOF"
     )
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-    tmp.write(pdf_content)
-    tmp.close()
-    return tmp.name
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(pdf_content)
+        tmp_name = tmp.name
+    return tmp_name
 
 
 def test_extract_text_from_valid_pdf():
@@ -79,12 +76,10 @@ def test_cap_pdf_collection_budget():
         {"filename": "doc3.pdf", "text": "Z" * 100, "page_count": 1},
     ]
 
-    # Global budget of 150 characters
     result = cap_pdf_collection(docs, max_chars_total=150)
     assert result["total_characters"] == 150
     assert result["budget_exceeded"] is True
     assert len(result["files"]) == 3
-    # doc1 should have 100 chars, doc2 should have 50 chars, doc3 should have 0 chars
     assert len(result["files"][0]["text"]) == 100
     assert len(result["files"][1]["text"]) == 50
     assert result["files"][1].get("truncated") is True
@@ -93,35 +88,35 @@ def test_cap_pdf_collection_budget():
 
 def test_malformed_pdf_handling():
     """Test that malformed/corrupted PDF files are handled cleanly without crashing."""
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-    tmp.write(b"NOT A REAL PDF FILE DATA JUNK CONTENT %%%")
-    tmp.close()
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(b"NOT A REAL PDF FILE DATA JUNK CONTENT %%%")
+        tmp_name = tmp.name
 
     try:
-        res = extract_text_from_pdf(tmp.name)
+        res = extract_text_from_pdf(tmp_name)
         assert "error" in res
         assert res["text"] == ""
     finally:
-        os.unlink(tmp.name)
+        os.unlink(tmp_name)
 
 
 def test_password_protected_pdf_handling():
     """Test that password-protected PDFs are detected and report clear error."""
     writer = PdfWriter()
-    writer.add_blank_page(width=100, height=100)
+    _ = writer.add_blank_page(width=100, height=100)
     writer.encrypt("super_secret_password")
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
-    writer.write(tmp)
-    tmp.close()
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        writer.write(tmp)
+        tmp_name = tmp.name
 
     try:
-        res = extract_text_from_pdf(tmp.name)
+        res = extract_text_from_pdf(tmp_name)
         assert "error" in res
         assert "password" in res["error"].lower() or res.get("is_encrypted") is True
         assert res["text"] == ""
     finally:
-        os.unlink(tmp.name)
+        os.unlink(tmp_name)
 
 
 def test_nonexistent_pdf_handling():
