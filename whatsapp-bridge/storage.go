@@ -169,8 +169,8 @@ func (s *Storage) SaveMessage(ctx context.Context, m Message) error {
 
 	msgQuery := `INSERT INTO messages (
 			id, chat_jid, sender_jid, text, timestamp, is_from_me, has_media,
-			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, raw_data, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET
 			text = excluded.text,
 			has_media = excluded.has_media,
@@ -179,7 +179,8 @@ func (s *Storage) SaveMessage(ctx context.Context, m Message) error {
 			media_mimetype = excluded.media_mimetype,
 			media_path = COALESCE(NULLIF(excluded.media_path, ''), messages.media_path),
 			media_size = excluded.media_size,
-			is_revoked = excluded.is_revoked;`
+			is_revoked = excluded.is_revoked,
+			raw_data = COALESCE(NULLIF(excluded.raw_data, ''), messages.raw_data);`
 
 	fromMe, hasMed, isRev := 0, 0, 0
 	if m.IsFromMe {
@@ -195,7 +196,7 @@ func (s *Storage) SaveMessage(ctx context.Context, m Message) error {
 	_, err = tx.ExecContext(ctx, msgQuery,
 		m.ID, m.ChatJID, m.SenderJID, m.Text, m.Timestamp,
 		fromMe, hasMed, m.MediaType, m.MediaFilename, m.MediaMimeType,
-		m.MediaPath, m.MediaSize, isRev,
+		m.MediaPath, m.MediaSize, isRev, m.RawData,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting message: %w", err)
@@ -567,7 +568,7 @@ func (s *Storage) GetLastInteraction(ctx context.Context, contactIdentifier stri
 	}
 
 	query := `SELECT id, chat_jid, sender_jid, text, timestamp, is_from_me, has_media,
-			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, created_at
+			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, raw_data, created_at
 		FROM messages
 		WHERE sender_jid = ? OR chat_jid = ?
 		ORDER BY timestamp DESC
@@ -620,7 +621,7 @@ func (s *Storage) ListMessages(ctx context.Context, f MessageFilter) ([]Message,
 	}
 
 	query := fmt.Sprintf(`SELECT id, chat_jid, sender_jid, text, timestamp, is_from_me, has_media,
-			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, created_at
+			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, raw_data, created_at
 		FROM messages
 		%s
 		ORDER BY timestamp DESC
@@ -642,7 +643,7 @@ func (s *Storage) GetMessage(ctx context.Context, id string) (*Message, error) {
 	defer s.mu.RUnlock()
 
 	query := `SELECT id, chat_jid, sender_jid, text, timestamp, is_from_me, has_media,
-			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, created_at
+			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, raw_data, created_at
 		FROM messages WHERE id = ?;`
 
 	return s.scanSingleMessage(s.db.QueryRowContext(ctx, query, id))
@@ -670,7 +671,7 @@ func (s *Storage) GetMessageContext(ctx context.Context, messageID string, befor
 
 	// Fetch before messages (timestamp < target.timestamp)
 	beforeQuery := `SELECT id, chat_jid, sender_jid, text, timestamp, is_from_me, has_media,
-			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, created_at
+			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, raw_data, created_at
 		FROM messages
 		WHERE chat_jid = ? AND timestamp < ?
 		ORDER BY timestamp DESC
@@ -698,7 +699,7 @@ func (s *Storage) GetMessageContext(ctx context.Context, messageID string, befor
 
 	// Fetch after messages (timestamp > target.timestamp)
 	afterQuery := `SELECT id, chat_jid, sender_jid, text, timestamp, is_from_me, has_media,
-			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, created_at
+			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, raw_data, created_at
 		FROM messages
 		WHERE chat_jid = ? AND timestamp > ?
 		ORDER BY timestamp ASC
@@ -743,7 +744,7 @@ func (s *Storage) GetGroupPDFs(ctx context.Context, chatJID string, since, until
 	}
 
 	query := fmt.Sprintf(`SELECT id, chat_jid, sender_jid, text, timestamp, is_from_me, has_media,
-			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, created_at
+			media_type, media_filename, media_mimetype, media_path, media_size, is_revoked, raw_data, created_at
 		FROM messages
 		WHERE %s
 		ORDER BY timestamp DESC;`, strings.Join(conditions, " AND "))
@@ -787,13 +788,13 @@ func (s *Storage) IsUserAdmin(ctx context.Context, groupJID, userJID string) (bo
 func (s *Storage) scanSingleMessage(row *sql.Row) (*Message, error) {
 	var m Message
 	var fromMe, hasMed, isRev int
-	var text, mType, mFile, mMime, mPath sql.NullString
+	var text, mType, mFile, mMime, mPath, rawData sql.NullString
 	var mSize sql.NullInt64
 
 	err := row.Scan(
 		&m.ID, &m.ChatJID, &m.SenderJID, &text, &m.Timestamp,
 		&fromMe, &hasMed, &mType, &mFile, &mMime, &mPath, &mSize,
-		&isRev, &m.CreatedAt,
+		&isRev, &rawData, &m.CreatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -811,6 +812,7 @@ func (s *Storage) scanSingleMessage(row *sql.Row) (*Message, error) {
 	m.MediaPath = mPath.String
 	m.MediaSize = mSize.Int64
 	m.IsRevoked = isRev == 1
+	m.RawData = rawData.String
 
 	return &m, nil
 }
@@ -821,13 +823,13 @@ func (s *Storage) scanMessages(rows *sql.Rows) ([]Message, error) {
 	for rows.Next() {
 		var m Message
 		var fromMe, hasMed, isRev int
-		var text, mType, mFile, mMime, mPath sql.NullString
+		var text, mType, mFile, mMime, mPath, rawData sql.NullString
 		var mSize sql.NullInt64
 
 		err := rows.Scan(
 			&m.ID, &m.ChatJID, &m.SenderJID, &text, &m.Timestamp,
 			&fromMe, &hasMed, &mType, &mFile, &mMime, &mPath, &mSize,
-			&isRev, &m.CreatedAt,
+			&isRev, &rawData, &m.CreatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -842,6 +844,7 @@ func (s *Storage) scanMessages(rows *sql.Rows) ([]Message, error) {
 		m.MediaPath = mPath.String
 		m.MediaSize = mSize.Int64
 		m.IsRevoked = isRev == 1
+		m.RawData = rawData.String
 
 		messages = append(messages, m)
 	}

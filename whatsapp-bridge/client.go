@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
 )
 
 // BridgeStatus represents the current state of the WhatsApp bridge.
@@ -284,6 +286,11 @@ func (b *WhatsAppBridge) ingestMessage(ctx context.Context, evt *events.Message)
 		mediaSize = int64(m.VideoMessage.GetFileLength())
 	}
 
+	var rawDataStr string
+	if rawBytes, err := proto.Marshal(evt.Message); err == nil {
+		rawDataStr = base64.StdEncoding.EncodeToString(rawBytes)
+	}
+
 	msg := Message{
 		ID:            evt.Info.ID,
 		ChatJID:       chatJID,
@@ -297,6 +304,7 @@ func (b *WhatsAppBridge) ingestMessage(ctx context.Context, evt *events.Message)
 		MediaMimeType: mediaMimeType,
 		MediaSize:     mediaSize,
 		IsRevoked:     false,
+		RawData:       rawDataStr,
 	}
 
 	if err := b.storage.SaveMessage(ctx, msg); err != nil {
@@ -413,14 +421,16 @@ func (b *WhatsAppBridge) GetStatus() BridgeStatus {
 
 	var phone string
 	jidStr := ""
-	if b.client.Store.ID != nil {
+	isLoggedIn := false
+	if b.client != nil && b.client.Store != nil && b.client.Store.ID != nil {
 		jidStr = b.client.Store.ID.ToNonAD().String()
 		phone = b.client.Store.ID.User
+		isLoggedIn = b.isLoggedIn.Load()
 	}
 
 	return BridgeStatus{
 		Connected:    b.isConnected.Load(),
-		LoggedIn:     b.isLoggedIn.Load() && b.client.Store.ID != nil,
+		LoggedIn:     isLoggedIn,
 		JID:          jidStr,
 		Phone:        phone,
 		PushName:     b.pushName,

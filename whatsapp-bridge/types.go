@@ -56,6 +56,7 @@ type Message struct {
 	MediaPath     string    `json:"media_path,omitempty"`
 	MediaSize     int64     `json:"media_size,omitempty"`
 	IsRevoked     bool      `json:"is_revoked"`
+	RawData       string    `json:"raw_data,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
