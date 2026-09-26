@@ -1,0 +1,9 @@
+# Core runtime dependencies
+mcp==1.30.0
+pypdf==6.19.0
+httpx==0.28.1
+
+# Development and testing dependencies
+pytest==9.1.1
+pytest-asyncio==1.4.0
+ruff==0.16.9

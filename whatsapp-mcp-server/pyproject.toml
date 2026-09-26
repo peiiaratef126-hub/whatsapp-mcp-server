@@ -1,0 +1,30 @@
+[project]
+name = "whatsapp-mcp-server"
+version = "0.1.0"
+description = "WhatsApp MCP server connecting to WhatsApp Web multi-device protocol via whatsmeow Go bridge"
+authors = [{ name = "WhatsApp MCP Contributors" }]
+requires-python = ">=3.11"
+dependencies = [
+    "mcp==1.30.0",
+    "pypdf==6.19.0",
+    "httpx==0.28.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.16.9",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
