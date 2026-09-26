@@ -12,7 +12,8 @@ import (
 )
 
 func main() {
-	dbPath := flag.String("db", "whatsapp_session.db", "Path to SQLite session database")
+	sessionDBPath := flag.String("session-db", "whatsapp_session.db", "Path to SQLite session database")
+	storageDBPath := flag.String("storage-db", "whatsapp_data.db", "Path to SQLite chats/messages/contacts database")
 	logLevel := flag.String("log-level", "INFO", "Logging level (DEBUG, INFO, WARN, ERROR)")
 	flag.Parse()
 
@@ -20,7 +21,7 @@ func main() {
 	defer cancel()
 
 	fmt.Println("Starting WhatsApp Bridge...")
-	bridge, err := NewWhatsAppBridge(ctx, *dbPath, *logLevel)
+	bridge, err := NewWhatsAppBridge(ctx, *sessionDBPath, *storageDBPath, *logLevel)
 	if err != nil {
 		fmt.Printf("Fatal: failed to initialize WhatsApp bridge: %v\n", err)
 		os.Exit(1)

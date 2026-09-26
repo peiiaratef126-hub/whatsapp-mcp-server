@@ -30,11 +30,12 @@ type BridgeStatus struct {
 	LastSeenTime string `json:"last_seen_time,omitempty"`
 }
 
-// WhatsAppBridge manages the whatsmeow client connection, QR pairing, and session persistence.
+// WhatsAppBridge manages the whatsmeow client connection, QR pairing, session persistence, and message ingestion.
 type WhatsAppBridge struct {
 	client      *whatsmeow.Client
 	container   *sqlstore.Container
 	deviceStore *store.Device
+	storage     *Storage
 	dbPath      string
 	logger      waLog.Logger
 
@@ -46,16 +47,15 @@ type WhatsAppBridge struct {
 	userJID     types.JID
 	pushName    string
 
-	// Callback for incoming messages and events (wired up by storage layer)
 	eventHandlers []func(evt interface{})
 }
 
-// NewWhatsAppBridge creates a new bridge instance and initializes the SQLite session store.
-func NewWhatsAppBridge(ctx context.Context, dbPath string, logLevel string) (*WhatsAppBridge, error) {
+// NewWhatsAppBridge creates a new bridge instance, initializes session and local SQLite storage.
+func NewWhatsAppBridge(ctx context.Context, sessionDBPath, storageDBPath, logLevel string) (*WhatsAppBridge, error) {
 	logger := waLog.Stdout("Bridge", logLevel, true)
 	dbLog := waLog.Stdout("Database", "WARN", true)
 
-	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", dbPath), dbLog)
+	container, err := sqlstore.New(ctx, "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", sessionDBPath), dbLog)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open session store: %w", err)
 	}
@@ -72,6 +72,11 @@ func NewWhatsAppBridge(ctx context.Context, dbPath string, logLevel string) (*Wh
 		logger.Infof("Loaded existing device session: %s", deviceStore.ID.String())
 	}
 
+	storage, err := NewStorage(storageDBPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize local storage: %w", err)
+	}
+
 	clientLog := waLog.Stdout("Client", logLevel, true)
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 
@@ -79,7 +84,8 @@ func NewWhatsAppBridge(ctx context.Context, dbPath string, logLevel string) (*Wh
 		client:      client,
 		container:   container,
 		deviceStore: deviceStore,
-		dbPath:      dbPath,
+		storage:     storage,
+		dbPath:      sessionDBPath,
 		logger:      logger,
 	}
 
@@ -88,7 +94,17 @@ func NewWhatsAppBridge(ctx context.Context, dbPath string, logLevel string) (*Wh
 	return bridge, nil
 }
 
-// AddEventHandler registers an external handler for WhatsApp events (e.g. storage layer).
+// Storage returns the underlying SQLite storage instance.
+func (b *WhatsAppBridge) Storage() *Storage {
+	return b.storage
+}
+
+// Client returns the underlying whatsmeow client.
+func (b *WhatsAppBridge) Client() *whatsmeow.Client {
+	return b.client
+}
+
+// AddEventHandler registers an external handler for WhatsApp events.
 func (b *WhatsAppBridge) AddEventHandler(handler func(evt interface{})) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -152,8 +168,11 @@ func (b *WhatsAppBridge) listenQRChannel(qrChan <-chan whatsmeow.QRChannelItem) 
 	}
 }
 
-// handleEvent processes internal WhatsApp events like connection state and session invalidation.
+// handleEvent processes internal WhatsApp events like connection state, incoming messages, and session invalidation.
 func (b *WhatsAppBridge) handleEvent(rawEvt interface{}) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	switch evt := rawEvt.(type) {
 	case *events.Connected:
 		b.isConnected.Store(true)
@@ -166,6 +185,9 @@ func (b *WhatsAppBridge) handleEvent(rawEvt interface{}) {
 		}
 		b.mu.Unlock()
 		b.logger.Infof("Connected to WhatsApp as %s (PushName: %s)", b.userJID.String(), b.pushName)
+
+		// Sync initial joined groups in background
+		go b.syncGroups(context.Background())
 
 	case *events.Disconnected:
 		b.isConnected.Store(false)
@@ -193,9 +215,15 @@ func (b *WhatsAppBridge) handleEvent(rawEvt interface{}) {
 
 	case *events.StreamReplaced:
 		b.logger.Warnf("WhatsApp Web stream replaced by another session.")
+
+	case *events.Message:
+		b.ingestMessage(ctx, evt)
+
+	case *events.GroupInfo:
+		b.ingestGroupInfo(ctx, evt)
 	}
 
-	// Dispatch to registered handlers
+	// Dispatch to external registered handlers
 	b.mu.RLock()
 	handlers := make([]func(evt interface{}), len(b.eventHandlers))
 	copy(handlers, b.eventHandlers)
@@ -206,6 +234,157 @@ func (b *WhatsAppBridge) handleEvent(rawEvt interface{}) {
 	}
 }
 
+// ingestMessage stores incoming and outgoing messages into SQLite.
+func (b *WhatsAppBridge) ingestMessage(ctx context.Context, evt *events.Message) {
+	if evt == nil || evt.Message == nil {
+		return
+	}
+
+	chatJID := evt.Info.Chat.ToNonAD().String()
+	senderJID := evt.Info.Sender.ToNonAD().String()
+
+	text := ""
+	mediaType := ""
+	mediaFilename := ""
+	mediaMimeType := ""
+	var mediaSize int64
+	hasMedia := false
+
+	m := evt.Message
+	if m.Conversation != nil {
+		text = *m.Conversation
+	} else if m.ExtendedTextMessage != nil && m.ExtendedTextMessage.Text != nil {
+		text = *m.ExtendedTextMessage.Text
+	} else if m.DocumentMessage != nil {
+		hasMedia = true
+		mediaType = "document"
+		mediaMimeType = m.DocumentMessage.GetMimetype()
+		mediaFilename = m.DocumentMessage.GetFileName()
+		if mediaFilename == "" {
+			mediaFilename = m.DocumentMessage.GetTitle()
+		}
+		text = m.DocumentMessage.GetCaption()
+		mediaSize = int64(m.DocumentMessage.GetFileLength())
+	} else if m.ImageMessage != nil {
+		hasMedia = true
+		mediaType = "image"
+		mediaMimeType = m.ImageMessage.GetMimetype()
+		text = m.ImageMessage.GetCaption()
+		mediaSize = int64(m.ImageMessage.GetFileLength())
+	} else if m.AudioMessage != nil {
+		hasMedia = true
+		mediaType = "audio"
+		mediaMimeType = m.AudioMessage.GetMimetype()
+		mediaSize = int64(m.AudioMessage.GetFileLength())
+	} else if m.VideoMessage != nil {
+		hasMedia = true
+		mediaType = "video"
+		mediaMimeType = m.VideoMessage.GetMimetype()
+		text = m.VideoMessage.GetCaption()
+		mediaSize = int64(m.VideoMessage.GetFileLength())
+	}
+
+	msg := Message{
+		ID:            evt.Info.ID,
+		ChatJID:       chatJID,
+		SenderJID:     senderJID,
+		Text:          text,
+		Timestamp:     evt.Info.Timestamp.Unix(),
+		IsFromMe:      evt.Info.IsFromMe,
+		HasMedia:      hasMedia,
+		MediaType:     mediaType,
+		MediaFilename: mediaFilename,
+		MediaMimeType: mediaMimeType,
+		MediaSize:     mediaSize,
+		IsRevoked:     false,
+	}
+
+	if err := b.storage.SaveMessage(ctx, msg); err != nil {
+		b.logger.Errorf("Failed to persist message %s: %v", evt.Info.ID, err)
+	}
+
+	// Update contact info if push name is available
+	if evt.Info.PushName != "" && !evt.Info.IsFromMe {
+		contact := Contact{
+			JID:         senderJID,
+			PhoneNumber: evt.Info.Sender.User,
+			PushName:    evt.Info.PushName,
+			UpdatedAt:   time.Now(),
+		}
+		_ = b.storage.SaveContact(ctx, contact)
+	}
+}
+
+// ingestGroupInfo updates group metadata and participants in local storage.
+func (b *WhatsAppBridge) ingestGroupInfo(ctx context.Context, evt *events.GroupInfo) {
+	if evt == nil {
+		return
+	}
+	groupJID := evt.JID.ToNonAD().String()
+
+	if evt.Name != nil {
+		_ = b.storage.SaveChat(ctx, Chat{
+			JID:       groupJID,
+			Name:      evt.Name.Name,
+			IsGroup:   true,
+			IsChannel: false,
+			UpdatedAt: time.Now(),
+		})
+	}
+
+	// Refresh group metadata and participants in background
+	go func(jid types.JID) {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		info, err := b.client.GetGroupInfo(bgCtx, jid)
+		if err != nil {
+			return
+		}
+		var parts []GroupParticipant
+		for _, p := range info.Participants {
+			parts = append(parts, GroupParticipant{
+				GroupJID:       groupJID,
+				ParticipantJID: p.JID.ToNonAD().String(),
+				IsAdmin:        p.IsAdmin,
+				IsSuperAdmin:   p.IsSuperAdmin,
+			})
+		}
+		_ = b.storage.SaveGroupParticipants(bgCtx, groupJID, parts)
+	}(evt.JID)
+}
+
+// syncGroups fetches joined groups from WhatsApp and populates storage.
+func (b *WhatsAppBridge) syncGroups(ctx context.Context) {
+	groups, err := b.client.GetJoinedGroups(ctx)
+	if err != nil {
+		b.logger.Warnf("Could not fetch joined groups: %v", err)
+		return
+	}
+
+	for _, g := range groups {
+		groupJID := g.JID.ToNonAD().String()
+		_ = b.storage.SaveChat(ctx, Chat{
+			JID:       groupJID,
+			Name:      g.Name,
+			IsGroup:   true,
+			IsChannel: false,
+			UpdatedAt: time.Now(),
+		})
+
+		var parts []GroupParticipant
+		for _, p := range g.Participants {
+			parts = append(parts, GroupParticipant{
+				GroupJID:       groupJID,
+				ParticipantJID: p.JID.ToNonAD().String(),
+				IsAdmin:        p.IsAdmin,
+				IsSuperAdmin:   p.IsSuperAdmin,
+			})
+		}
+		_ = b.storage.SaveGroupParticipants(ctx, groupJID, parts)
+	}
+	b.logger.Infof("Synchronized %d joined groups to local database.", len(groups))
+}
+
 // Disconnect gracefully shuts down the WhatsApp connection and session container.
 func (b *WhatsAppBridge) Disconnect() {
 	b.logger.Infof("Disconnecting WhatsApp client...")
@@ -214,6 +393,9 @@ func (b *WhatsAppBridge) Disconnect() {
 	}
 	if b.container != nil {
 		_ = b.container.Close()
+	}
+	if b.storage != nil {
+		_ = b.storage.Close()
 	}
 	b.isConnected.Store(false)
 }
