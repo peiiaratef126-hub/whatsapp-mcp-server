@@ -1,6 +1,6 @@
 # WhatsApp MCP Server
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/peiiaratef126-hub-whatsapp-mcp-server-c6vpu65)](https://m8ven.ai/mcp/peiiaratef126-hub-whatsapp-mcp-server-c6vpu65)
+[![M8ven Score](https://m8ven.ai/badge/mcp/peiiaratef126-hub/whatsapp-mcp-server)](https://m8ven.ai/mcp/peiiaratef126-hub/whatsapp-mcp-server)
 
 A Model Context Protocol (MCP) server that connects to a personal WhatsApp account through the unofficial WhatsApp Web multi-device protocol using [`whatsmeow`](https://github.com/tulir/whatsmeow) and the official [Model Context Protocol Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
