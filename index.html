@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp MCP Server — Documentation & Status</title>
+  <meta name="description" content="Model Context Protocol (MCP) server connecting LLM clients to WhatsApp Web Multi-Device via whatsmeow.">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(22, 30, 46, 0.7);
+      --border: rgba(255, 255, 255, 0.08);
+      --accent: #25d366;
+      --accent-glow: rgba(37, 211, 102, 0.2);
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --code-bg: #0f172a;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .badge {
+      display: inline-block;
+      background: var(--accent-glow);
+      color: var(--accent);
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      border: 1px solid var(--accent);
+    }
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.025em;
+    }
+    p.lead {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 650px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+      margin-bottom: 1.5rem;
+      backdrop-filter: blur(8px);
+    }
+    h2 {
+      font-size: 1.35rem;
+      margin-bottom: 1rem;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .stat-card {
+      background: rgba(15, 23, 42, 0.6);
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .stat-title {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stat-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      margin-top: 0.25rem;
+    }
+    pre {
+      background: var(--code-bg);
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.9rem;
+      color: #38bdf8;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+    ul {
+      padding-left: 1.5rem;
+      margin-top: 0.5rem;
+    }
+    li {
+      margin-bottom: 0.5rem;
+      color: var(--text-muted);
+    }
+    li strong {
+      color: var(--text);
+    }
+    .notice {
+      background: rgba(59, 130, 246, 0.1);
+      border-left: 4px solid #3b82f6;
+      padding: 1rem;
+      border-radius: 4px;
+      margin-top: 1rem;
+      font-size: 0.95rem;
+    }
+    footer {
+      text-align: center;
+      margin-top: 4rem;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">Model Context Protocol</div>
+      <h1>WhatsApp MCP Server</h1>
+      <p class="lead">Connect personal WhatsApp accounts to LLMs (Claude Desktop, Cursor, etc.) via whatsmeow and FastMCP with 22 built-in tools.</p>
+    </header>
+
+    <div class="card">
+      <h2>Architecture & Deployment Overview</h2>
+      <p>This system uses a decoupled, two-tier architecture designed for privacy, local session isolation, and end-to-end security:</p>
+      <div class="grid">
+        <div class="stat-card">
+          <div class="stat-title">Go WhatsApp Bridge</div>
+          <div class="stat-value">whatsmeow (WebSocket)</div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Persistent multi-device client with local SQLite store and 127.0.0.1 HTTP API.</p>
+        </div>
+        <div class="stat-card">
+          <div class="stat-title">Python MCP Server</div>
+          <div class="stat-value">FastMCP (STDIO)</div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Exposes 22 typed tools over STDIO to Claude Desktop with confirmation gating.</p>
+        </div>
+      </div>
+      <div class="notice">
+        <strong>Vercel Deployment Context:</strong> Vercel hosts this web documentation and status portal. The underlying WhatsApp connection requires a persistent WebSocket and local SQLite database running on your local machine or a dedicated VPS.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Claude Desktop Configuration</h2>
+      <p>Add this configuration to your <code>claude_desktop_config.json</code>:</p>
+      <pre><code>{
+  "mcpServers": {
+    "whatsapp": {
+      "command": "python",
+      "args": [
+        "-m", "whatsapp_mcp_server.main"
+      ],
+      "env": {
+        "WHATSAPP_BRIDGE_URL": "http://127.0.0.1:8080",
+        "SENTRY_DSN": ""
+      }
+    }
+  }
+}</code></pre>
+    </div>
+
+    <div class="card">
+      <h2>Available MCP Tools (22 Total)</h2>
+      <ul>
+        <li><strong>Contacts (3):</strong> <code>search_contacts</code>, <code>get_direct_chat_by_contact</code>, <code>get_contact_chats</code></li>
+        <li><strong>Messages (9):</strong> <code>list_chats</code>, <code>get_chat</code>, <code>list_messages</code>, <code>get_last_interaction</code>, <code>get_message_context</code>, <code>send_message</code>, <code>send_reaction</code>, <code>delete_message</code> <em>(confirm=True)</em>, <code>mark_as_read</code></li>
+        <li><strong>Media & Documents (4):</strong> <code>send_file</code>, <code>send_audio_message</code>, <code>download_media</code>, <code>get_group_pdfs</code></li>
+        <li><strong>Groups (4):</strong> <code>create_group</code>, <code>add_participant</code>, <code>remove_participant</code>, <code>get_group_invite_link</code></li>
+        <li><strong>Channels (1):</strong> <code>create_channel</code></li>
+        <li><strong>Admin & Moderation (1):</strong> <code>set_group_admins_only</code> <em>(confirm=True)</em></li>
+      </ul>
+    </div>
+
+    <footer>
+      WhatsApp MCP Server &bull; Protected under Private Repository &bull; Sentry Observability Ready
+    </footer>
+  </div>
+</body>
+</html>
