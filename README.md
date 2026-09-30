@@ -1,5 +1,7 @@
 # WhatsApp MCP Server
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/pelianisrt126-hub/whatsapp-mcp-server)](https://m8ven.ai/mcp/pelianisrt126-hub/whatsapp-mcp-server)
+
 A Model Context Protocol (MCP) server that connects to a personal WhatsApp account through the unofficial WhatsApp Web multi-device protocol using [`whatsmeow`](https://github.com/tulir/whatsmeow) and the official [Model Context Protocol Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
 This system exposes tools for an LLM client (such as Claude Desktop) to read, search, and send messages, manage groups and channels, download media, and extract text from PDF documents shared in WhatsApp group chats.

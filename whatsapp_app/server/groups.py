@@ -2,10 +2,9 @@
 
 from typing import Any
 
+from client import BridgeClient, BridgeError
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
-
-from client import BridgeClient, BridgeError
 
 
 def register_groups_tools(mcp: FastMCP, client: BridgeClient) -> None:

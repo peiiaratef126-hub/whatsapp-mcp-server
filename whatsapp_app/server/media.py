@@ -7,12 +7,11 @@ import tempfile
 from typing import Any
 
 import pypdf
+from client import BridgeClient, BridgeError
+from config import DEFAULT_MAX_CHARS_TOTAL, DEFAULT_MAX_PAGES_PER_PDF
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pypdf.errors import PdfReadError
-
-from client import BridgeClient, BridgeError
-from config import DEFAULT_MAX_CHARS_TOTAL, DEFAULT_MAX_PAGES_PER_PDF
 
 
 # Pure logic helpers for unit testing & extraction

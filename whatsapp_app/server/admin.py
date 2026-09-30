@@ -2,11 +2,10 @@
 
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
-from mcp.types import ToolAnnotations
-
 from client import BridgeClient, BridgeError
 from confirmation import format_pending_confirmation
+from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 
 def register_admin_tools(mcp: FastMCP, client: BridgeClient) -> None:
