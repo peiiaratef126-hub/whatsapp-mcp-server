@@ -2,8 +2,9 @@
 
 import os
 
-# Go bridge URL (strictly localhost)
-BRIDGE_URL: str = os.getenv("WHATSAPP_BRIDGE_URL", "http://127.0.0.1:8080")
+# Go bridge port & URL (strictly localhost)
+BRIDGE_PORT: int = int(os.getenv("WHATSAPP_BRIDGE_PORT", "8080"))
+BRIDGE_URL: str = os.getenv("WHATSAPP_BRIDGE_URL", f"http://127.0.0.1:{BRIDGE_PORT}")
 
 # Request timeout in seconds
 REQUEST_TIMEOUT: float = float(os.getenv("WHATSAPP_REQUEST_TIMEOUT", "20.0"))

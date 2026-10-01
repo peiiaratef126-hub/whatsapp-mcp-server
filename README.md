@@ -4,7 +4,7 @@
 
 A Model Context Protocol (MCP) server that connects to a personal WhatsApp account through the unofficial WhatsApp Web multi-device protocol using [`whatsmeow`](https://github.com/tulir/whatsmeow) and the official [Model Context Protocol Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 
-This system exposes tools for an LLM client (such as Claude Desktop) to read, search, and send messages, manage groups and channels, download media, and extract text from PDF documents shared in WhatsApp group chats.
+This system exposes tools for an LLM client (such as Claude Desktop or Cursor) to read, search, and send messages, manage groups and channels, download media, and extract text from PDF documents shared in WhatsApp group chats.
 
 ---
 
@@ -13,24 +13,26 @@ This system exposes tools for an LLM client (such as Claude Desktop) to read, se
 The system employs a two-process architecture communicating locally:
 
 ```
-┌─────────────────────────────────┐
-│     LLM Client (Claude Desktop) │
-└────────────────┬────────────────┘
-                 │ stdio (JSON-RPC)
-┌────────────────▼────────────────────────────────┐
-│   whatsapp-mcp-server (Python FastMCP)          │
-│   - Enforces confirmation for destructive tools │
-│   - Extracts text from PDFs (pypdf)             │
-│   - Audio format conversion via ffmpeg          │
-└────────────────┬────────────────────────────────┘
-                 │ HTTP (localhost 127.0.0.1:8080 only)
-┌────────────────▼────────────────────────────────┐
-│   whatsapp-bridge (Go + whatsmeow)              │
-│   - Multi-device WhatsApp connection            │
-│   - Terminal QR code pairing                    │
-│   - SQLite session persistence & history cache  │
-│   - Real-time message & group ingestion         │
-└─────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────┐
+│        LLM Client (Claude Desktop / Cursor)   │
+└───────────────────────┬───────────────────────┘
+                        │ stdio (JSON-RPC)
+┌───────────────────────▼───────────────────────┐
+│      whatsapp-mcp-server (Python FastMCP)     │
+│      - Enforces confirmation for destructive  │
+│        actions (delete_message, admin modes)  │
+│      - Extracts text from PDFs (pypdf)        │
+│      - Audio format conversion via ffmpeg     │
+│      - Sentry tracing & error observability   │
+└───────────────────────┬───────────────────────┘
+                        │ HTTP (localhost 127.0.0.1:8080 only)
+┌───────────────────────▼───────────────────────┐
+│      whatsapp-bridge (Go + whatsmeow)         │
+│      - Multi-device WhatsApp connection       │
+│      - Terminal QR code pairing               │
+│      - SQLite session persistence & storage   │
+│      - Real-time message & group ingestion    │
+└───────────────────────────────────────────────┘
 ```
 
 1. **`whatsapp-bridge/` (Go)**:
@@ -44,6 +46,7 @@ The system employs a two-process architecture communicating locally:
    - Organizes tools into modular files by concern (`contacts.py`, `messages.py`, `media.py`, `groups.py`, `channels.py`, `admin.py`).
    - Enforces the confirmation mechanism for destructive actions.
    - Extracts and budgets text from PDF attachments without making internal LLM calls.
+   - Annotated with MCP Tool Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`).
 
 ---
 
@@ -53,6 +56,39 @@ The system employs a two-process architecture communicating locally:
 - **C Compiler (CGO)**: MinGW-W64 GCC (required by `mattn/go-sqlite3`).
 - **Python**: 3.11+ (tested and verified with Python 3.13.2).
 - **FFmpeg** (optional, recommended): Used to encode audio messages to `.ogg` Opus for voice notes. If not installed, audio files are sent as standard audio documents with an informative warning.
+
+---
+
+## Authentication & QR Pairing
+
+Authentication uses WhatsApp Web's official multi-device QR pairing mechanism. You do not need to share passwords, API keys, or cloud credentials.
+
+### Step-by-Step Pairing Guide:
+1. **Launch the Go Bridge**:
+   ```bash
+   cd whatsapp-bridge
+   ./bridge.exe -port 8080
+   ```
+2. **Scan the ASCII QR Code**:
+   Upon initial startup, the bridge generates an ASCII half-block QR code directly in your terminal:
+   ```text
+   [Bridge] INFO: === NEW WHATSAPP QR CODE ===
+   [Bridge] INFO: Scan this QR code in WhatsApp -> Linked Devices -> Link a Device:
+   ▄▄▄▄▄▄▄  ▄▄ ▄▄▄▄▄▄▄
+   █ ▄▄▄ █ ▄██ █ ▄▄▄ █
+   █ ███ █ █▀█ █ ███ █
+   ...
+   ```
+3. **Link on Mobile Device**:
+   - Open **WhatsApp** on your mobile phone.
+   - Navigate to **Settings** (or the triple-dot menu on Android) > **Linked Devices**.
+   - Tap **Link a Device** and point your phone camera at the terminal QR code.
+4. **Session Persistence**:
+   - The encryption keys and paired device tokens are stored locally in `whatsapp_session.db` (SQLite).
+   - All subsequent bridge launches immediately restore the existing session without requiring another QR scan.
+5. **Session Expiry & Invalidation**:
+   - WhatsApp Web sessions typically expire if inactive or approximately every ~20 days.
+   - If a session is invalidated (e.g. unlinked from the phone app), the bridge logs `WhatsApp session invalid or logged out`, clears the expired session, and automatically renders a fresh QR code for re-authentication without crashing.
 
 ---
 
@@ -69,17 +105,6 @@ go build -o bridge.exe .
 # Start the bridge (binds strictly to 127.0.0.1:8080)
 ./bridge.exe -port 8080 -session-db whatsapp_session.db -storage-db whatsapp_data.db
 ```
-
-#### QR Code Pairing:
-- On initial startup, the terminal will display a half-block ASCII QR code:
-  ```
-  [Bridge] INFO: === NEW WHATSAPP QR CODE ===
-  [Bridge] INFO: Scan this QR code in WhatsApp -> Linked Devices -> Link a Device:
-  <ASCII QR CODE>
-  ```
-- Open WhatsApp on your primary phone, go to **Settings** > **Linked Devices** > **Link a Device**, and scan the code.
-- Once paired, the credentials are saved to `whatsapp_session.db`. Future runs connect automatically without re-pairing.
-- **Session Lifecycle**: WhatsApp periodically invalidates linked device sessions (roughly every ~20 days). When this occurs, the bridge emits a warning and prompts for re-authentication rather than terminating.
 
 ### 2. Set Up the Python MCP Server
 
@@ -99,9 +124,36 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Claude Desktop Configuration
+---
 
-Add the server to your Claude Desktop configuration (`%APPDATA%\Claude\claude_desktop_config.json` on Windows or `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+## Environment Variables
+
+All settings can be configured via environment variables or a `.env` file (see `.env.example`):
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `WHATSAPP_BRIDGE_PORT` | `8080` | Port for communicating with the Go WhatsApp bridge (local loopback). |
+| `WHATSAPP_BRIDGE_URL` | `http://127.0.0.1:8080` | Base URL for the Go bridge service (strictly local loopback). |
+| `WHATSAPP_REQUEST_TIMEOUT` | `20.0` | HTTP request timeout in seconds for bridge API calls. |
+| `WHATSAPP_MAX_RETRIES` | `3` | Maximum retry attempts on transient network or connection errors. |
+| `WHATSAPP_PDF_MAX_PAGES` | `10` | Maximum pages extracted per PDF attachment. |
+| `WHATSAPP_PDF_MAX_CHARS` | `50000` | Global character limit across all extracted PDF attachments in a single batch. |
+| `WHATSAPP_LOG_LEVEL` | `INFO` | Logging verbosity for Go bridge (`DEBUG`, `INFO`, `WARN`, `ERROR`). |
+| `SENTRY_DSN` | *(empty)* | Optional Sentry DSN for unified error and exception tracking. |
+| `SENTRY_ENVIRONMENT` | `production` | Deployment environment tag for Sentry telemetry events. |
+| `SENTRY_RELEASE` | *(empty)* | Application release identifier for Sentry release tracking. |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0.1` | Sample rate for performance tracing transactions (0.0 to 1.0). |
+
+---
+
+## MCP Client Configuration
+
+### Claude Desktop
+
+Add the server to your Claude Desktop configuration file:
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
 
 ```json
 {
@@ -112,6 +164,7 @@ Add the server to your Claude Desktop configuration (`%APPDATA%\Claude\claude_de
         "C:\\Users\\Al-Mahdi\\whatsapp-mcp-server\\whatsapp-mcp-server\\main.py"
       ],
       "env": {
+        "WHATSAPP_BRIDGE_PORT": "8080",
         "WHATSAPP_BRIDGE_URL": "http://127.0.0.1:8080",
         "WHATSAPP_REQUEST_TIMEOUT": "20.0"
       }
@@ -119,6 +172,28 @@ Add the server to your Claude Desktop configuration (`%APPDATA%\Claude\claude_de
   }
 }
 ```
+
+### Cursor IDE
+
+Add to your workspace `.cursor/mcp.json` or globally under **Cursor Settings > Features > MCP**:
+
+```json
+{
+  "mcpServers": {
+    "whatsapp": {
+      "command": "C:\\Users\\Al-Mahdi\\whatsapp-mcp-server\\whatsapp-mcp-server\\.venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\Users\\Al-Mahdi\\whatsapp-mcp-server\\whatsapp-mcp-server\\main.py"
+      ],
+      "env": {
+        "WHATSAPP_BRIDGE_PORT": "8080",
+        "WHATSAPP_BRIDGE_URL": "http://127.0.0.1:8080"
+      }
+    }
+  }
+}
+```
+*(On macOS / Linux, update the `command` and `args` paths to match your virtual environment path, e.g. `/path/to/whatsapp-mcp-server/.venv/bin/python`).*
 
 ---
 
@@ -141,6 +216,8 @@ For dangerous or irreversible actions (`delete_message` and `set_group_admins_on
 ---
 
 ## Available MCP Tools (22 Total)
+
+All 22 tools are annotated with MCP tool hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`).
 
 ### Contacts (`contacts.py`)
 1. **`search_contacts(query: str) -> list[dict]`**  
@@ -212,6 +289,7 @@ For dangerous or irreversible actions (`delete_message` and `set_group_admins_on
 - `mcp`: `1.30.0` (official Python SDK with `FastMCP`)
 - `pypdf`: `6.19.0` (pure-Python PDF extraction and password-protection detection)
 - `httpx`: `0.28.1` (HTTP client for bridge communication)
+- `sentry-sdk`: `2.22.0` (error monitoring and performance tracing)
 - `pytest`: `9.1.1`
 - `pytest-asyncio`: `1.4.0`
 - `ruff`: `0.16.9`
@@ -233,7 +311,10 @@ For dangerous or irreversible actions (`delete_message` and `set_group_admins_on
    - **Go**: `go vet ./...` executed with 0 warnings.
    - **Python**: `ruff check .` executed with 0 errors across all modules and tests.
 
-3. **Automated Unit & Integration Tests**:
+3. **Automated Unit & Integration Tests (52 Tests Total)**:
+   - **Comprehensive Tool Test Coverage (`tests/test_mcp_tools_coverage.py`)**:
+     - All 22 tools referenced and tested explicitly by name using mock dependencies.
+     - 100% tool coverage across Admin, Channels, Contacts, Groups, Media, and Messages modules.
    - **Go Bridge Tests (`storage_test.go`, `server_test.go`)**:
      - SQLite schema initialization (WAL mode, foreign keys).
      - Contact insertion, retrieval, and search.

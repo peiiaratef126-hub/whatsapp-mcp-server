@@ -213,186 +213,217 @@ def convert_audio_to_ogg_opus(input_path: str) -> tuple[str, bool, str | None]:
         )
 
 
-def register_media_tools(mcp: FastMCP, client: BridgeClient) -> None:
-    """Register media and document tools with FastMCP server."""
+_client: BridgeClient | None = None
 
-    @mcp.tool(
-        annotations=ToolAnnotations(
-            readOnlyHint=False,
-            destructiveHint=False,
-            idempotentHint=False,
-            openWorldHint=True,
-        )
-    )
-    def send_file(recipient_jid: str, file_path: str, caption: str = "") -> dict[str, Any]:
-        """Send a document, image, or media file to a WhatsApp chat.
 
-        Args:
-            recipient_jid: Recipient user JID, group JID, or channel JID.
-            file_path: Absolute or relative path to the local file to send.
-            caption: Optional text caption accompanying the file.
+def get_client() -> BridgeClient:
+    """Get active bridge client, creating a default one if not set."""
+    global _client
+    if _client is None:
+        _client = BridgeClient()
+    return _client
 
-        Returns:
-            Result with success status, message ID, filename, and mime type.
-        """
-        if not recipient_jid or not recipient_jid.strip():
-            return {"error": "recipient_jid cannot be empty"}
-        if not file_path or not file_path.strip():
-            return {"error": "file_path cannot be empty"}
 
-        abs_path = os.path.abspath(file_path.strip())
-        if not os.path.exists(abs_path):
-            return {"error": f"File does not exist: {abs_path}"}
+def set_client(client: BridgeClient) -> None:
+    """Set active bridge client."""
+    global _client
+    _client = client
 
-        try:
-            return client.send_file(recipient_jid.strip(), abs_path, caption=caption)
-        except BridgeError as e:
-            return {"error": str(e), "file_path": abs_path}
 
-    @mcp.tool(
-        annotations=ToolAnnotations(
-            readOnlyHint=False,
-            destructiveHint=False,
-            idempotentHint=False,
-            openWorldHint=True,
-        )
-    )
-    def send_audio_message(recipient_jid: str, file_path: str) -> dict[str, Any]:
-        """Send an audio message / voice note to a WhatsApp chat.
+def send_file(recipient_jid: str, file_path: str, caption: str = "") -> dict[str, Any]:
+    """Send a document, image, or media file to a WhatsApp chat.
 
-        Automatically converts audio to .ogg Opus format via ffmpeg if installed.
-        If ffmpeg is missing, falls back to sending the file as a regular document with a warning.
+    Args:
+        recipient_jid: Recipient user JID, group JID, or channel JID.
+        file_path: Absolute or relative path to the local file to send.
+        caption: Optional text caption accompanying the file.
 
-        Args:
-            recipient_jid: Recipient user JID or group JID.
-            file_path: Local path to the audio file (e.g. mp3, wav, m4a, ogg).
+    Returns:
+        Result with success status, message ID, filename, and mime type.
+    """
+    if not recipient_jid or not recipient_jid.strip():
+        return {"error": "recipient_jid cannot be empty"}
+    if not file_path or not file_path.strip():
+        return {"error": "file_path cannot be empty"}
 
-        Returns:
-            Result containing message ID and any ffmpeg conversion warnings.
-        """
-        if not recipient_jid or not recipient_jid.strip():
-            return {"error": "recipient_jid cannot be empty"}
-        if not file_path or not file_path.strip():
-            return {"error": "file_path cannot be empty"}
+    abs_path = os.path.abspath(file_path.strip())
+    if not os.path.exists(abs_path):
+        return {"error": f"File does not exist: {abs_path}"}
 
-        abs_path = os.path.abspath(file_path.strip())
-        if not os.path.exists(abs_path):
-            return {"error": f"Audio file does not exist: {abs_path}"}
+    client = get_client()
+    try:
+        return client.send_file(recipient_jid.strip(), abs_path, caption=caption)
+    except BridgeError as e:
+        return {"error": str(e), "file_path": abs_path}
 
-        converted_path, is_converted, warning = convert_audio_to_ogg_opus(abs_path)
-        try:
-            if is_converted:
-                res = client.send_audio_message(recipient_jid.strip(), converted_path)
-            else:
-                res = client.send_file(recipient_jid.strip(), abs_path, caption="[Audio Message]")
 
-            if warning:
-                res["warning"] = warning
-            return res
-        except BridgeError as e:
-            return {"error": str(e), "file_path": abs_path}
+def send_audio_message(recipient_jid: str, file_path: str) -> dict[str, Any]:
+    """Send an audio message / voice note to a WhatsApp chat.
 
-    @mcp.tool(
-        annotations=ToolAnnotations(
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=True,
-        )
-    )
-    def download_media(message_id: str, chat_jid: str = "") -> dict[str, Any]:
-        """Download media attachment from a WhatsApp message and return its local file path.
+    Automatically converts audio to .ogg Opus format via ffmpeg if installed.
+    If ffmpeg is missing, falls back to sending the file as a regular document with a warning.
 
-        Args:
-            message_id: The ID of the message containing media.
-            chat_jid: Optional chat JID where the message was sent.
+    Args:
+        recipient_jid: Recipient user JID or group JID.
+        file_path: Local path to the audio file (e.g. mp3, wav, m4a, ogg).
 
-        Returns:
-            Dictionary with local file_path, filename, mime_type, and file size in bytes.
-        """
-        if not message_id or not message_id.strip():
-            return {"error": "message_id cannot be empty"}
-        try:
-            return client.download_media(message_id.strip(), chat_jid=chat_jid.strip())
-        except BridgeError as e:
-            return {"error": str(e), "message_id": message_id}
+    Returns:
+        Result containing message ID and any ffmpeg conversion warnings.
+    """
+    if not recipient_jid or not recipient_jid.strip():
+        return {"error": "recipient_jid cannot be empty"}
+    if not file_path or not file_path.strip():
+        return {"error": "file_path cannot be empty"}
 
-    @mcp.tool(
-        annotations=ToolAnnotations(
-            readOnlyHint=True,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=True,
-        )
-    )
-    def get_group_pdfs(
-        chat_jid: str,
-        since: int | None = None,
-        until: int | None = None,
-        max_pages_per_pdf: int = DEFAULT_MAX_PAGES_PER_PDF,
-        max_chars_total: int = DEFAULT_MAX_CHARS_TOTAL,
-    ) -> dict[str, Any]:
-        """Scan a group's message history for PDF attachments, download them, and extract their text.
+    abs_path = os.path.abspath(file_path.strip())
+    if not os.path.exists(abs_path):
+        return {"error": f"Audio file does not exist: {abs_path}"}
 
-        Returns a structured per-file breakdown of extracted text capped to the character budget,
-        ready for the LLM to summarize. This tool does not make any internal LLM calls.
+    converted_path, is_converted, warning = convert_audio_to_ogg_opus(abs_path)
+    client = get_client()
+    try:
+        if is_converted:
+            res = client.send_audio_message(recipient_jid.strip(), converted_path)
+        else:
+            res = client.send_file(recipient_jid.strip(), abs_path, caption="[Audio Message]")
 
-        Args:
-            chat_jid: Group JID (e.g. 123456-789@g.us) to scan.
-            since: Optional Unix timestamp (start date/time boundary).
-            until: Optional Unix timestamp (end date/time boundary).
-            max_pages_per_pdf: Maximum pages to extract per PDF file (default: 10).
-            max_chars_total: Maximum total character budget across all extracted PDFs (default: 50,000).
+        if warning:
+            res["warning"] = warning
+        return res
+    except BridgeError as e:
+        return {"error": str(e), "file_path": abs_path}
 
-        Returns:
-            Dictionary with total_files, files list (each with filename, page_count, text), and budget info.
-        """
-        if not chat_jid or not chat_jid.strip():
-            return {"error": "chat_jid cannot be empty"}
 
-        try:
-            pdf_messages = client.get_group_pdfs(chat_jid.strip(), since=since, until=until)
-        except BridgeError as e:
-            return {"error": str(e), "chat_jid": chat_jid}
+def download_media(message_id: str, chat_jid: str = "") -> dict[str, Any]:
+    """Download media attachment from a WhatsApp message and return its local file path.
 
-        if not pdf_messages:
-            return {
-                "chat_jid": chat_jid,
-                "total_files": 0,
-                "files": [],
-                "message": "No PDF attachments found in the specified chat and date range.",
-            }
+    Args:
+        message_id: The ID of the message containing media.
+        chat_jid: Optional chat JID where the message was sent.
 
-        extracted_docs: list[dict[str, Any]] = []
-        for msg in pdf_messages:
-            msg_id = msg.get("id")
-            local_path = msg.get("media_path")
+    Returns:
+        Dictionary with local file_path, filename, mime_type, and file size in bytes.
+    """
+    if not message_id or not message_id.strip():
+        return {"error": "message_id cannot be empty"}
+    client = get_client()
+    try:
+        return client.download_media(message_id.strip(), chat_jid=chat_jid.strip())
+    except BridgeError as e:
+        return {"error": str(e), "message_id": message_id}
 
-            # If not yet downloaded to local disk, download it
-            if not local_path or not os.path.exists(local_path):
-                try:
-                    dl_res = client.download_media(msg_id, chat_jid=chat_jid)
-                    local_path = dl_res.get("file_path")
-                except BridgeError as e:
-                    extracted_docs.append(
-                        {
-                            "message_id": msg_id,
-                            "filename": msg.get("media_filename", f"{msg_id}.pdf"),
-                            "error": f"Failed to download attachment: {e}",
-                        }
-                    )
-                    continue
 
-            if local_path and os.path.exists(local_path):
-                doc_info = extract_text_from_pdf(
-                    local_path,
-                    max_pages=max_pages_per_pdf,
-                    char_budget=max_chars_total,
+def get_group_pdfs(
+    chat_jid: str,
+    since: int | None = None,
+    until: int | None = None,
+    max_pages_per_pdf: int = DEFAULT_MAX_PAGES_PER_PDF,
+    max_chars_total: int = DEFAULT_MAX_CHARS_TOTAL,
+) -> dict[str, Any]:
+    """Scan a group's message history for PDF attachments, download them, and extract their text.
+
+    Returns a structured per-file breakdown of extracted text capped to the character budget,
+    ready for the LLM to summarize. This tool does not make any internal LLM calls.
+
+    Args:
+        chat_jid: Group JID (e.g. 123456-789@g.us) to scan.
+        since: Optional Unix timestamp (start date/time boundary).
+        until: Optional Unix timestamp (end date/time boundary).
+        max_pages_per_pdf: Maximum pages to extract per PDF file (default: 10).
+        max_chars_total: Maximum total character budget across all extracted PDFs (default: 50,000).
+
+    Returns:
+        Dictionary with total_files, files list (each with filename, page_count, text), and budget info.
+    """
+    if not chat_jid or not chat_jid.strip():
+        return {"error": "chat_jid cannot be empty"}
+
+    client = get_client()
+    try:
+        pdf_messages = client.get_group_pdfs(chat_jid.strip(), since=since, until=until)
+    except BridgeError as e:
+        return {"error": str(e), "chat_jid": chat_jid}
+
+    if not pdf_messages:
+        return {
+            "chat_jid": chat_jid,
+            "total_files": 0,
+            "files": [],
+            "message": "No PDF attachments found in the specified chat and date range.",
+        }
+
+    extracted_docs: list[dict[str, Any]] = []
+    for msg in pdf_messages:
+        msg_id = msg.get("id")
+        local_path = msg.get("media_path")
+
+        # If not yet downloaded to local disk, download it
+        if not local_path or not os.path.exists(local_path):
+            try:
+                dl_res = client.download_media(msg_id, chat_jid=chat_jid)
+                local_path = dl_res.get("file_path")
+            except BridgeError as e:
+                extracted_docs.append(
+                    {
+                        "message_id": msg_id,
+                        "filename": msg.get("media_filename", f"{msg_id}.pdf"),
+                        "error": f"Failed to download attachment: {e}",
+                    }
                 )
-                doc_info["message_id"] = msg_id
-                doc_info["timestamp"] = msg.get("timestamp")
-                extracted_docs.append(doc_info)
+                continue
 
-        capped_collection = cap_pdf_collection(extracted_docs, max_chars_total=max_chars_total)
-        capped_collection["chat_jid"] = chat_jid
-        return capped_collection
+        if local_path and os.path.exists(local_path):
+            doc_info = extract_text_from_pdf(
+                local_path,
+                max_pages=max_pages_per_pdf,
+                char_budget=max_chars_total,
+            )
+            doc_info["message_id"] = msg_id
+            doc_info["timestamp"] = msg.get("timestamp")
+            extracted_docs.append(doc_info)
+
+    capped_collection = cap_pdf_collection(extracted_docs, max_chars_total=max_chars_total)
+    capped_collection["chat_jid"] = chat_jid
+    return capped_collection
+
+
+def register_media_tools(mcp: FastMCP, client: BridgeClient | None = None) -> None:
+    """Register media and document tools with FastMCP server."""
+    if client is not None:
+        set_client(client)
+
+    mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        )
+    )(send_file)
+
+    mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        )
+    )(send_audio_message)
+
+    mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,
+        )
+    )(download_media)
+
+    mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,
+        )
+    )(get_group_pdfs)
