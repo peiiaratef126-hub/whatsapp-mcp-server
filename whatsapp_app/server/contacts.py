@@ -82,12 +82,29 @@ def register_contacts_tools(mcp: FastMCP, client: BridgeClient | None = None) ->
     if client is not None:
         set_client(client)
 
-    contact_annotations = ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=True,
-    )
-    mcp.tool(annotations=contact_annotations)(search_contacts)
-    mcp.tool(annotations=contact_annotations)(get_direct_chat_by_contact)
-    mcp.tool(annotations=contact_annotations)(get_contact_chats)
+    mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )(search_contacts)
+
+    mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )(get_direct_chat_by_contact)
+
+    mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )(get_contact_chats)

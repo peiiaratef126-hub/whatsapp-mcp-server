@@ -405,3 +405,30 @@ def test_contact_not_found_edge_case(test_setup):
     res = tools["get_direct_chat_by_contact"]("+999999999")
     assert "error" in res
     assert "not found" in res["error"].lower()
+
+
+def test_all_22_tool_annotations_defined():
+    """Verify that all 22 tools have all four hints explicitly set with boolean values."""
+    from server import create_mcp_server
+
+    server = create_mcp_server()
+    server_tools = {t.name: t for t in server._tool_manager.list_tools()}
+    assert len(server_tools) == 22
+
+    for name, tool in server_tools.items():
+        assert hasattr(tool, "annotations"), f"Tool '{name}' is missing annotations attribute"
+        ann = tool.annotations
+        assert ann is not None, f"Tool '{name}' has None annotations"
+        assert isinstance(ann.readOnlyHint, bool), f"Tool '{name}' readOnlyHint is not a bool"
+        assert isinstance(ann.destructiveHint, bool), f"Tool '{name}' destructiveHint is not a bool"
+        assert isinstance(ann.idempotentHint, bool), f"Tool '{name}' idempotentHint is not a bool"
+        assert isinstance(ann.openWorldHint, bool), f"Tool '{name}' openWorldHint is not a bool"
+
+    # Verify contacts tool hints match M8ven requirements
+    for contact_tool in ["search_contacts", "get_direct_chat_by_contact", "get_contact_chats"]:
+        ann = server_tools[contact_tool].annotations
+        assert ann.readOnlyHint is True
+        assert ann.destructiveHint is False
+        assert ann.idempotentHint is True
+        assert ann.openWorldHint is False
+
